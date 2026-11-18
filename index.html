@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Licorería Viviana · Venta rápida</title>
+<style>
+  :root { --azul:#172B48; --verde:#087F5B; --verde-claro:#E7F5EE; --rojo:#B42318; --rojo-claro:#FBEAE9;
+          --ambar:#B46A00; --ambar-claro:#FDF3E1; --texto:#263342; --suave:#657180; --borde:#DAE0E7; --fondo:#F5F7F9; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:"Segoe UI", Roboto, Arial, sans-serif; background:var(--fondo); color:var(--texto); }
+  header { background:var(--azul); color:#fff; padding:14px 18px; display:flex; justify-content:space-between; align-items:center; }
+  header b { font-size:18px; }
+  #conexion { font-size:11px; font-weight:700; padding:3px 9px; border-radius:4px; border:1px solid; }
+  .ok   { color:var(--verde); background:var(--verde-claro); border-color:var(--verde); }
+  .mal  { color:var(--rojo);  background:var(--rojo-claro);  border-color:var(--rojo); }
+  .espera { color:var(--ambar); background:var(--ambar-claro); border-color:var(--ambar); }
+  main { max-width:480px; margin:0 auto; padding:16px; }
+  .tarjeta { background:#fff; border:1px solid var(--borde); border-radius:6px; padding:16px; margin-bottom:14px; }
+  h1 { font-size:20px; margin:4px 0 14px; }
+  label { display:block; font-size:13px; font-weight:700; color:var(--suave); margin:14px 0 6px; }
+  select, input { width:100%; font-size:17px; padding:12px; border:1px solid var(--borde); border-radius:5px; background:#fff; color:var(--texto); }
+  .cantidad { display:flex; gap:8px; }
+  .cantidad input { text-align:center; font-weight:700; }
+  .cantidad button { width:56px; font-size:24px; border:1px solid var(--azul); background:#fff; color:var(--azul); border-radius:5px; }
+  .pagos { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  .pagos button { padding:12px 4px; font-size:14px; font-weight:700; border:1px solid var(--azul); background:#fff; color:var(--azul); border-radius:5px; }
+  .pagos button.sel { background:var(--verde); border-color:var(--verde); color:#fff; }
+  .total { display:flex; justify-content:space-between; align-items:baseline; margin-top:16px; }
+  .total span { font-size:13px; font-weight:700; color:var(--suave); }
+  .total b { font-size:32px; }
+  #registrar { width:100%; margin-top:14px; padding:16px; font-size:17px; font-weight:700; color:#fff; background:var(--verde); border:0; border-radius:5px; }
+  #registrar:disabled { background:#9CC9B8; }
+  .nota { font-size:12px; color:var(--suave); margin-top:6px; }
+  .venta { display:flex; justify-content:space-between; gap:10px; padding:10px 0; border-top:1px solid #ECEFF3; font-size:14px; }
+  .venta:first-child { border-top:0; }
+  .venta small { display:block; color:var(--suave); }
+  .badge { font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px; border:1px solid; white-space:nowrap; align-self:center; }
+</style>
+</head>
+<body>
+<header><b>Licorería Viviana</b><span id="conexion" class="espera">CONECTANDO…</span></header>
+<main>
+  <div class="tarjeta">
+    <h1>Venta rápida desde el celular</h1>
+
+    <label for="producto">Producto</label>
+    <select id="producto"><option value="">Cargando productos…</option></select>
+    <div class="nota" id="stock"> </div>
+
+    <label for="cantidad">Cantidad</label>
+    <div class="cantidad">
+      <button type="button" id="menos">−</button>
+      <input id="cantidad" type="number" inputmode="numeric" min="1" value="1">
+      <button type="button" id="mas">+</button>
+    </div>
+
+    <label>Método de pago</label>
+    <div class="pagos">
+      <button type="button" data-metodo="EFECTIVO" class="sel">Efectivo</button>
+      <button type="button" data-metodo="YAPE/PLIN">Yape / Plin</button>
+      <button type="button" data-metodo="TARJETA">Tarjeta</button>
+    </div>
+
+    <div class="total"><span>TOTAL A PAGAR</span><b id="total">S/ 0.00</b></div>
+    <button id="registrar" disabled>REGISTRAR VENTA</button>
+    <div class="nota">La venta se guarda en la PC de la licorería (SQL Server) y el Dashboard se actualiza al instante.</div>
+  </div>
+
+  <div class="tarjeta">
+    <b>Ventas enviadas desde este celular</b>
+    <div id="ventas"><div class="nota">Todavía no hay ventas.</div></div>
+  </div>
+</main>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
+  import { getFirestore, doc, collection, addDoc, onSnapshot, serverTimestamp }
+      from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+  // ============================================================================
+  //  PEGA AQUÍ la configuración de TU proyecto Firebase (paso 4 de la guía).
+  //  Estos datos NO son secretos: pueden estar en una página pública.
+  //  (La clave secreta es el archivo .json de la PC, y ese nunca se sube.)
+  // ============================================================================
+  const firebaseConfig = {
+    apiKey: "AIzaSyBbQuZfstpU_UrsNaJRKSFaR4H8VQv6mL4",
+    authDomain: "licoreria-viviana-4c12d.firebaseapp.com",
+    projectId: "licoreria-viviana-4c12d",
+    storageBucket: "licoreria-viviana-4c12d.firebasestorage.app",
+    messagingSenderId: "1009746885944",
+    appId: "1:1009746885944:web:be489f3aa31c30d404d5cd"
+  };
+  // ============================================================================
+
+  const $ = id => document.getElementById(id);
+  const soles = n => "S/ " + Number(n).toFixed(2);
+  let productos = [], metodo = "EFECTIVO";
+  const enviadas = new Map();   // id del documento -> datos de la venta
+
+  function estado(texto, clase) { $("conexion").textContent = texto; $("conexion").className = clase; }
+
+  if (firebaseConfig.projectId === "PEGA_AQUI") {
+    estado("FALTA CONFIGURAR", "mal");
+    $("producto").innerHTML = "<option>Falta pegar firebaseConfig en index.html</option>";
+  } else {
+    const db = getFirestore(initializeApp(firebaseConfig));
+
+    // 1. Productos, precios y stock: los publica el sistema de la PC en catalogo/actual
+    onSnapshot(doc(db, "catalogo", "actual"), snap => {
+      if (!snap.exists()) {
+        estado("ABRA EL SISTEMA EN LA PC", "espera");
+        $("producto").innerHTML = "<option value=''>Aún no hay productos (abra el sistema en la PC)</option>";
+        return;
+      }
+      estado("CONECTADO", "ok");
+      const elegido = $("producto").value;
+      productos = snap.data().productos || [];
+      $("producto").innerHTML = "<option value=''>Elija un producto…</option>" + productos.map(p =>
+        `<option value="${p.id_producto}" ${p.stock <= 0 ? "disabled" : ""}>${p.nombre} · ${soles(p.precio)}${p.stock <= 0 ? " (sin stock)" : ""}</option>`).join("");
+      $("producto").value = elegido;
+      actualizar();
+    }, () => estado("SIN CONEXIÓN", "mal"));
+
+    // 2. Enviar la venta: queda PENDIENTE hasta que la PC la registra en SQL Server
+    $("registrar").onclick = async () => {
+      const p = actual(), cantidad = parseInt($("cantidad").value, 10);
+      if (!p || !(cantidad > 0)) return;
+      $("registrar").disabled = true;
+      try {
+        const ref = await addDoc(collection(db, "ventas_celular"), {
+          id_producto: p.id_producto, producto: p.nombre, cantidad: cantidad, metodo_pago: metodo,
+          total_estimado: +(p.precio * cantidad).toFixed(2), estado: "PENDIENTE", creado: serverTimestamp()
+        });
+        // 3. Se queda mirando ESA venta: la PC le pone el N° de boleta o el motivo del rechazo
+        onSnapshot(ref, s => { if (s.exists()) { enviadas.set(ref.id, s.data()); pintarVentas(); } });
+        $("cantidad").value = 1;
+        $("producto").value = "";
+      } catch (e) {
+        alert("No se pudo enviar la venta. Revise su internet.\n" + e.message);
+      }
+      actualizar();
+    };
+  }
+
+  function actual() { return productos.find(p => String(p.id_producto) === $("producto").value); }
+
+  function actualizar() {
+    const p = actual(), c = parseInt($("cantidad").value, 10) || 0;
+    $("stock").textContent = p ? "Stock disponible: " + p.stock + " un." : " ";
+    $("total").textContent = soles(p ? p.precio * c : 0);
+    $("registrar").disabled = !p || c < 1 || c > p.stock;
+    if (p && c > p.stock) $("stock").textContent = "Solo hay " + p.stock + " un. en stock.";
+  }
+
+  function pintarVentas() {
+    const estilos = { PENDIENTE: "espera", PROCESANDO: "espera", PROCESADA: "ok", RECHAZADA: "mal" };
+    const textos  = { PENDIENTE: "ENVIADA", PROCESANDO: "REGISTRANDO…", PROCESADA: "REGISTRADA", RECHAZADA: "RECHAZADA" };
+    $("ventas").innerHTML = [...enviadas.values()].reverse().map(v => `
+      <div class="venta">
+        <div><b>${v.cantidad} × ${v.producto}</b>
+          <small>${v.estado === "PROCESADA" ? "Boleta " + v.boleta + " · " + soles(v.total) + " · " + v.metodo_pago
+                 : v.estado === "RECHAZADA" ? (v.mensaje || "No se pudo registrar")
+                 : "Esperando a la PC de la licorería…"}</small></div>
+        <span class="badge ${estilos[v.estado] || "espera"}">${textos[v.estado] || v.estado}</span>
+      </div>`).join("");
+  }
+
+  $("producto").onchange = actualizar;
+  $("cantidad").oninput = actualizar;
+  $("mas").onclick = () => { $("cantidad").value = (parseInt($("cantidad").value, 10) || 0) + 1; actualizar(); };
+  $("menos").onclick = () => { $("cantidad").value = Math.max(1, (parseInt($("cantidad").value, 10) || 1) - 1); actualizar(); };
+  document.querySelectorAll(".pagos button").forEach(b => b.onclick = () => {
+    metodo = b.dataset.metodo;
+    document.querySelectorAll(".pagos button").forEach(x => x.classList.toggle("sel", x === b));
+  });
+</script>
+</body>
+</html>
